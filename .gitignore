@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+.venv/
+
+# PyCharm
+.idea/
+
+# Build files
+build/
+dist/
+
+# Application logs
+logs/
+tls_events.jsonl
+tls_logs.json
+
+# Generated reports
+reports/
+
+# Environment / secrets
+.env
+.env.*
