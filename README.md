@@ -1,132 +1,67 @@
 # TLS Security Analyzer
 
-TLS Security Analyzer is a desktop and command-line tool for assessing the TLS/HTTPS security posture of a web server.
+**TLS Security Analyzer** is a desktop and command-line application for reviewing the TLS/HTTPS security posture of a public web endpoint. It combines protocol probes, certificate inspection, cipher analysis, HTTP security-header checks, evidence-based findings, and local reporting in one focused tool.
 
-The project focuses on practical TLS and HTTPS configuration checks rather than full-scale vulnerability scanning or penetration testing. It analyzes supported TLS versions, the server certificate, the negotiated cipher suite, HTTP security headers, and produces structured findings with evidence and remediation guidance.
+It is designed for defensive configuration reviews, learning, troubleshooting, and authorised security testing — not exploitation or full vulnerability assessment.
 
-## Features
+## Highlights
 
-- **TLS protocol probing** for TLS 1.0, 1.1, 1.2, and 1.3.
-- Clear probe results: `SUPPORTED`, `NOT_SUPPORTED`, or `PROBE_ERROR`, with an explanation for each result.
-- **TLS certificate analysis**, including:
-  - certificate receipt;
-  - hostname verification;
-  - Subject and Common Name;
-  - Subject Alternative Names (SAN);
-  - expiration date and remaining validity;
-  - public-key type and size;
-  - certificate signature algorithm;
-  - self-signed certificate heuristic.
-- **Negotiated cipher-suite analysis** with encryption, authentication, key-exchange information, and weak/deprecated algorithm detection.
-- **HTTP security-header checks** over HTTPS:
-  - HSTS;
-  - Content-Security-Policy;
-  - X-Content-Type-Options;
-  - X-Frame-Options;
-  - Referrer-Policy;
-  - Permissions-Policy;
-  - Cross-Origin-Opener-Policy;
-  - Cross-Origin-Resource-Policy.
-- **Structured security findings** containing severity, description, evidence, and remediation.
-- **Risk scoring** for successfully completed scans.
-- **JSON and PDF reports**.
-- **Local scan history and audit logs**.
-- Desktop GUI with Dashboard, Scan, Logs, and About sections.
-- Command-line interface suitable for automation and CI workflows.
-- Configurable `--fail-on` exit behavior for CI/CD pipelines.
+| Area | What the analyzer does |
+| --- | --- |
+| TLS protocols | Probes TLS 1.0, 1.1, 1.2, and 1.3 independently and records whether each version was actually negotiated. |
+| Certificates | Inspects issuer, subject, Common Name, SANs, validity, public key, signature algorithm, hostname verification, and self-signed indicators. |
+| Cipher suite | Describes the cipher negotiated for the current connection and flags common legacy algorithm markers. |
+| HTTP controls | Checks eight common HTTPS response headers, using `HEAD` with a `GET` fallback where appropriate. |
+| Findings | Produces structured findings with severity, evidence, and a concise remediation recommendation. |
+| Reports | Saves JSON and PDF reports, plus a persistent local JSONL audit log. |
+| Automation | Offers a CLI with machine-readable JSON output and a `--fail-on` security gate for CI/CD. |
 
-## Architecture
+## Interface
 
-```text
-┌─────────────────┐
-│    GUI / CLI    │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│   TLS Scanner   │
-└────────┬────────┘
-         │
-    ┌────┼────────────────────┐
-    ▼    ▼                    ▼
-┌──────┐ ┌──────────────┐ ┌──────────────┐
-│ TLS  │ │ Certificate  │ │    HTTP      │
-│ &    │ │   analysis   │ │   headers    │
-│cipher│ │              │ │   analysis   │
-└──┬───┘ └──────┬───────┘ └──────┬───────┘
-   │             │                │
-   └─────────────┼────────────────┘
-                 ▼
-        ┌─────────────────┐
-        │ Risk / Finding  │
-        │      Engine     │
-        └────────┬────────┘
-                 │
-          ┌──────┴──────┐
-          ▼             ▼
-     JSON / PDF    Local history
-                    & logs
-```
+The CustomTkinter desktop workspace has four sections:
 
-The scanning logic is shared between the desktop application and the CLI, so both interfaces use the same core assessment workflow.
+- **Dashboard** — recent scans and risk-level totals.
+- **Scan** — run a scan and explore certificates, TLS probes, findings, and response headers.
+- **Logs** — inspect the local structured audit trail.
+- **About** — review the tool's checks, scope, and storage locations.
 
-## Security Checks
+All scan output is selectable and copyable. Long certificate SAN lists and policy values wrap instead of being truncated.
+
+## What is checked
 
 ### TLS protocol support
 
-The analyzer probes TLS 1.3, TLS 1.2, TLS 1.1, and TLS 1.0 individually.
+Each protocol is tested individually and reported as one of the following:
 
-Each probe reports one of three states:
+| Result | Meaning |
+| --- | --- |
+| `SUPPORTED` | The requested version was successfully negotiated. |
+| `NOT_SUPPORTED` | The server reached the TLS layer but rejected or did not offer the requested version. |
+| `PROBE_ERROR` | The result could not be determined reliably because of a client-side or connection error. |
 
-- `SUPPORTED` — the requested TLS version was successfully negotiated.
-- `NOT_SUPPORTED` — the connection reached the TLS layer but the requested version was rejected or unavailable.
-- `PROBE_ERROR` — the result could not be reliably determined because of a client-side limitation or connection error.
+The TLS 1.0 and TLS 1.1 probes use an isolated, relaxed OpenSSL context solely to determine whether an endpoint still accepts legacy clients. This does not lower the security of the normal scan connection.
 
-Legacy TLS 1.0 and TLS 1.1 probes use a relaxed OpenSSL security level specifically to determine whether the endpoint still accepts these legacy protocols.
+Legacy TLS is evaluated in context:
 
-### Certificate analysis
+- TLS 1.0/1.1 available **alongside TLS 1.2 or TLS 1.3** is recorded as an informational legacy-fallback finding.
+- An endpoint with **no modern TLS support** is a Critical finding.
 
-For a successfully established TLS connection, the analyzer records certificate information such as:
+### Certificate and cipher analysis
 
-- issuer;
-- subject;
-- Common Name;
-- SAN entries;
-- validity period;
-- remaining days before expiration;
+The analyzer records:
+
+- certificate issuer, Subject, Common Name, and SAN entries;
+- certificate validity dates and remaining days;
+- hostname and chain verification status;
 - public-key type and size;
-- certificate signature algorithm;
-- hostname verification result;
-- self-signed heuristic.
+- signature algorithm and a self-signed heuristic;
+- negotiated cipher name, TLS version, key size, encryption, key exchange, authentication, and strength.
 
-The self-signed check compares the certificate Subject and Issuer. This is treated as an indicator rather than independent cryptographic proof.
-
-### Cipher suite
-
-The analyzer evaluates the **cipher suite negotiated during the current TLS connection**.
-
-It records:
-
-- cipher-suite name;
-- TLS version;
-- key size;
-- encryption information;
-- authentication information;
-- key-exchange information;
-- strength classification;
-- reason for a weak classification.
-
-The weak-cipher check currently looks for legacy markers such as RC4, 3DES, DES, NULL, MD5, and SHA1.
-
-This is a heuristic assessment of the negotiated cipher. The tool does **not** perform a complete enumeration of every cipher suite supported by the server.
+The weak-cipher heuristic flags common legacy markers including RC4, 3DES, DES, NULL, MD5, and SHA-1. It assesses the cipher negotiated for the current connection; it is not exhaustive cipher-suite enumeration.
 
 ### HTTP security headers
 
-Security headers are checked over HTTPS.
-
-The analyzer attempts a HEAD request first and falls back to GET when the server does not support HEAD with status 405 or 501.
-
-The following headers are checked:
+The following headers are checked over HTTPS:
 
 - `Strict-Transport-Security`
 - `Content-Security-Policy`
@@ -137,189 +72,151 @@ The following headers are checked:
 - `Cross-Origin-Opener-Policy`
 - `Cross-Origin-Resource-Policy`
 
-The absence of a header is classified according to the project's configured severity.
+The application tries a `HEAD` request first and falls back to `GET` when a server rejects `HEAD` with `405` or `501`.
 
-## Findings and Risk Scoring
+## Risk model
 
-Successful scans generate structured findings containing:
-
-- **ID**
-- **Severity**
-- **Description**
-- **Evidence**
-- **Recommendation**
-
-Examples include:
-
-- legacy TLS versions enabled;
-- modern TLS unavailable;
-- TLS 1.3 unavailable;
-- missing security headers;
-- hostname verification failure;
-- expired certificate;
-- certificate expiring soon;
-- apparent self-signed certificate;
-- weak negotiated cipher suite.
-
-Connectivity failures are represented as scan statuses rather than security findings. Consequently, failed scans receive a risk score of `N/A`.
-
-### Severity weights
+Successful scans produce findings with an ID, severity, evidence, and recommendation. The score is a **configuration-posture signal**, not a complete vulnerability rating for the organisation behind a domain.
 
 | Severity | Score contribution |
-|---|---:|
+| --- | ---: |
 | Critical | 40 |
 | High | 25 |
 | Medium | 15 |
 | Low | 5 |
 | Info | 0 |
 
-The total score is capped at 100.
+Scores are capped at 100. A Critical finding enforces a minimum score of 80, while a High finding enforces a minimum score of 50. Failed connections receive `N/A`, rather than a risk score, because the checks could not be completed.
 
-The resulting risk level is determined from the findings. Critical findings impose a minimum score of 80, while High findings impose a minimum score of 50.
+The result represents one endpoint response from one scanning environment. CDN routing, load balancing, HTTP redirects, local OpenSSL policy, and the target's changing configuration can affect the observed result.
 
-## Scan Status
+## Requirements
 
-A scan can also terminate with a connection-related status:
-
-| Status | Meaning |
-|---|---|
-| `SUCCESS` | Scan completed successfully |
-| `DNS_ERROR` | DNS resolution failed |
-| `TIMEOUT` | Connection timed out |
-| `TLS_ERROR` | TLS handshake failed |
-| `CONNECTION_ERROR` | Other connection-level failure |
-
-A non-successful scan does not receive a security risk score.
-
-## Desktop Application
-
-The desktop application provides four main sections:
-
-- **Dashboard** — scan statistics and recent activity.
-- **Scan** — enter a domain and run an assessment.
-- **Logs** — review the complete local audit log.
-- **About** — overview of the checks, reports, scope, and limitations.
-
-The Dashboard displays recent scan activity, while the full history remains available through the Logs section.
-
-## Command-Line Usage
-
-Run the desktop application:
-
-```powershell
-.\.venv\Scripts\python.exe .\TLS_Analyzer.py
-```
-
-Run a CLI scan:
-
-```powershell
-.\.venv\Scripts\python.exe .\TLS_Analyzer.py example.com
-```
-
-Print the complete JSON result:
-
-```powershell
-.\.venv\Scripts\python.exe .\TLS_Analyzer.py example.com --json
-```
-
-Save a JSON report:
-
-```powershell
-.\.venv\Scripts\python.exe .\TLS_Analyzer.py example.com --save-json
-```
-
-Generate a PDF report:
-
-```powershell
-.\.venv\Scripts\python.exe .\TLS_Analyzer.py example.com --pdf
-```
-
-Save both JSON and PDF reports:
-
-```powershell
-.\.venv\Scripts\python.exe .\TLS_Analyzer.py example.com --pdf --save-json
-```
-
-Suppress the CLI summary:
-
-```powershell
-.\.venv\Scripts\python.exe .\TLS_Analyzer.py example.com --quiet
-```
-
-Use the scan as a CI/CD gate:
-
-```powershell
-.\.venv\Scripts\python.exe .\TLS_Analyzer.py example.com --fail-on high
-```
-
-The `--fail-on` option returns exit code `1` when the resulting risk level meets or exceeds the selected threshold. Failed scans return exit code `2`. A successful scan without a threshold violation returns exit code `0`.
-
-## Reports and Audit History
-
-Reports are stored in the local `reports/` directory.
-
-The application can generate:
-
-- JSON reports containing the complete scan result;
-- PDF reports containing a formatted security summary.
-
-Scan events are stored locally in:
+- Python 3.10 or newer
+- Dependencies listed in [`requirements.txt`](requirements.txt)
 
 ```text
-logs/events.jsonl
+customtkinter
+cryptography
+python-dateutil
+reportlab
 ```
 
-The application uses this file to provide persistent scan history and Dashboard statistics.
+## Installation
+
+```powershell
+git clone <your-repository-url>
+cd TLS_Analyzer
+
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+On macOS or Linux, activate the virtual environment with:
+
+```bash
+source .venv/bin/activate
+```
+
+## Usage
+
+### Desktop application
+
+```powershell
+python .\TLS_Analyzer.py
+```
+
+Enter a domain such as `example.com`, then select **Scan**. The GUI creates local JSON/PDF reports and updates the Dashboard audit history after each scan.
+
+### Command line
+
+```powershell
+python .\TLS_Analyzer.py example.com
+```
+
+Useful CLI options:
+
+```powershell
+# Print the complete scan result as JSON
+python .\TLS_Analyzer.py example.com --json
+
+# Save JSON and PDF reports
+python .\TLS_Analyzer.py example.com --save-json --pdf
+
+# Hide the human-readable summary line
+python .\TLS_Analyzer.py example.com --quiet
+
+# Fail a CI job when the result is High or Critical
+python .\TLS_Analyzer.py example.com --fail-on high
+```
+
+### CLI exit codes
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | Successful scan; no configured `--fail-on` threshold was reached. |
+| `1` | Successful scan, but the risk level met or exceeded `--fail-on`. |
+| `2` | The scan did not complete successfully, for example because of DNS, timeout, or TLS connection errors. |
+
+## Reports and local storage
+
+The application creates these local directories when needed:
+
+```text
+logs/
+└── events.jsonl          # append-only structured scan events
+
+reports/
+├── report_<timestamp>.json
+└── report_<timestamp>.pdf
+```
+
+These files are excluded from Git by default. They can contain target domains and scan metadata, so treat them as local assessment data.
 
 ## Testing
 
-Unit tests are designed to run offline:
+Run the offline unit test suite:
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s .\tests -t . -v
+python -m unittest discover -s .\tests -t . -v
 ```
 
-Network-dependent CLI integration tests can be enabled with:
+Optional network-backed CLI integration tests are disabled by default. Enable them only when a network scan is appropriate:
 
 ```powershell
 $env:RUN_NETWORK_TESTS="1"
+python -m unittest discover -s .\tests -t . -v
 ```
 
-If the repository contains the corresponding GitHub Actions workflow, the CI pipeline can run the tests and perform a network scan as part of the automated verification process.
+The repository also includes a GitHub Actions workflow that installs dependencies, runs the tests, applies a CLI security gate, and uploads the scan-result artifact.
 
-## CI/CD
+## Project structure
 
-The CLI can be used as a security gate in automated pipelines.
-
-The `--fail-on` option makes the scanner return a non-zero exit code when the configured risk threshold is reached, allowing CI/CD systems to fail a job based on the scan result.
-
-Example:
-
-```powershell
-.\.venv\Scripts\python.exe .\TLS_Analyzer.py example.com --fail-on high
+```text
+TLS_Analyzer/
+├── TLS_Analyzer.py          # shared scanner core, GUI, and CLI
+├── requirements.txt         # Python dependencies
+├── tests/                   # offline unit and optional integration tests
+├── .github/workflows/       # automated test and security-gate workflow
+├── logs/                    # local audit history (generated)
+└── reports/                 # JSON/PDF reports (generated)
 ```
 
-## Limitations
+## Scope and limitations
 
-TLS Security Analyzer is intentionally scoped as a **TLS/HTTPS posture assessment tool**.
+TLS Security Analyzer is intentionally focused. It does not perform:
 
-It does not provide:
-
-- port scanning;
-- service enumeration;
-- exploitation;
-- penetration testing;
-- vulnerability exploitation;
+- port scanning or service enumeration;
+- exploitation or penetration testing;
 - complete cipher-suite enumeration;
-- comprehensive application security testing;
-- full web-application vulnerability scanning.
+- web-application vulnerability scanning;
+- a full compliance audit;
+- a complete assessment of an organisation or all of its infrastructure.
 
-Results represent the security posture observed from a single scanning client and should not be treated as a complete security assessment of the target environment.
+Use the findings to guide investigation and configuration review, not as a substitute for a formal security assessment.
 
-TLS probing and cipher classification are also affected by the capabilities and security policies of the local Python/OpenSSL environment.
+## Authorised use
 
-## Authorization
-
-Only scan systems that you own or are explicitly authorized to assess.
-
-The tool is intended for defensive security assessment, configuration verification, troubleshooting, and authorized security testing.
+Only scan systems you own or have explicit permission to assess. The project is intended for defensive security testing, configuration validation, and educational use.
